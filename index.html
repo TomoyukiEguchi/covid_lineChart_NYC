@@ -1,0 +1,382 @@
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="icon" type="image/png" href="assets/images/favicon.png">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    <title>COVID-19 NYC Cases</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+</head>
+<body>
+  <div class ='container-fluid'>
+    <div class='row'>
+      <div id="chart">
+        <div class='header'>
+          <h3>COVID-19 Daily Counts of Cases</h3>
+          <p>Daily count of NYC residents who tested positive for COVID-19</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    var glines
+    var mouseG
+    var tooltip
+
+    //var parseDate = d3.timeParse("%m/%d/%Y")
+    //var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
+
+    var margin = {top: 80, right: 200, bottom: 50, left: 80}
+    var width = 1400 - margin.left - margin.right
+    var height = 510 - margin.top - margin.bottom
+
+    var lineOpacity = 1
+    var lineStroke = "1.5px"
+
+    var axisPad = 6 // axis formatting
+    var R = 6 //legend marker
+
+    const render = newData => {      
+      
+      var category = ["Manhattan", "Queens", "Brooklyn", "the Bronx", "Staten Island"]
+      var color = d3.scaleOrdinal()
+        .domain(category)
+        .range(["#2D4057", "#EE811D", "#B7433D", "#2E7576", "#7C8DA4"]);
+
+      var xScale = d3.scaleTime()
+        .domain(d3.extent(newData, d => d.date))
+        .range([0, width]);
+      
+      var yScale = d3.scaleLinear()
+        .domain([0, d3.max(newData, d => d.case) + 200])
+        .range([height, 0]);
+
+      var svg = d3.select("#chart").append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append('g')
+          .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      // CREATE AXES // 
+      // render axis first before lines so that lines will overlay the horizontal ticks
+      var xAxis = d3.axisBottom(xScale).ticks(d3.timeMonth.every(1)).tickSizeOuter(axisPad).tickSizeInner(axisPad)
+      var yAxis = d3.axisLeft(yScale).ticks(10).tickSize(-width) //horizontal ticks across svg width
+
+      svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", `translate(0, ${height})`)
+        .call(xAxis)
+        .call(g => {
+          var months = xScale.ticks(d3.timeMonth.every(1))
+          var xshift = (width/(months.length))/2 
+          //g.selectAll("text").attr("transform", `translate(${xshift}, 0)`) //shift tick labels to middle of interval
+          g.selectAll("text").attr("transform", "translate(0, 0)")
+            .style("text-anchor", "middle")
+            .attr("y", axisPad*2)
+            .attr('fill', '#A9A9A9')
+
+          g.selectAll("line")
+            .attr('stroke', '#A9A9A9')
+            .attr('opacity', 0.3)
+
+          g.select(".domain")
+            //.attr('stroke', '#A9A9A9')
+            .remove()
+        })
+
+      svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis)
+        .call(g => {
+          g.selectAll("text")
+          .style("text-anchor", "middle")
+          .attr("x", -axisPad*2)
+          .attr('fill', '#A9A9A9')
+
+          g.selectAll("line")
+            .attr('stroke', '#A9A9A9')
+            .attr('stroke-width', 0.7) // make horizontal tick thinner and lighter so that line paths can stand out
+            .attr('opacity', 0.3)
+
+          g.select(".domain")
+            .remove()
+        })
+        .append('text')
+          .attr('x', 20)
+          .attr("y", -10)
+          .attr("fill", "#A9A9A9")
+          .text("Case Count")
+
+      // CREATE LEGEND // 
+      var svgLegend = svg.append('g')
+          .attr('class', 'gLegend')
+          .attr("transform", "translate(" + (width + 20) + "," + 0 + ")")
+
+      var legend = svgLegend.selectAll('.legend')
+        .data(category)
+        .enter().append('g')
+          .attr("class", "legend")
+          .attr("transform", function (d, i) {
+                                  return "translate(0," + i * 20 + ")"
+                              })
+
+      legend.append("circle")
+          .attr("class", "legend-node")
+          .attr("cx", 0)
+          .attr("cy", 0)
+          .attr("r", R)
+          .style("fill", d => color(d))
+
+      legend.append("text")
+          .attr("class", "legend-text")
+          .attr("x", R*2)
+          .attr("y", R/2)
+          .style("fill", "#A9A9A9")
+          .style("font-size", 12)
+          .text(d => d)      
+
+      // line generator
+      var line = d3.line()
+        .x(d => xScale(d.date))
+        .y(d => yScale(d.case))
+
+      renderChart()
+      
+      function renderChart() {
+        var res_nested = d3.nest() // necessary to nest data so that keys represent each borough
+          .key(d => d.borough)
+          .entries(newData)
+
+        // APPEND MULTIPLE LINES //
+        var lines = svg.append('g')
+              .attr('class', 'lines')
+
+        // chart render
+        glines = lines.selectAll('.line-group')
+          .data(res_nested).enter()
+          .append('g')
+          .attr('class', 'line-group')
+
+        glines  
+          .append('path')
+            .attr('class', 'line')  
+            .attr('d', d => line(d.values))
+            .style('stroke', (d, i) => color(i))
+            .style('fill', 'none')
+            .style('opacity', lineOpacity)
+            .style('stroke-width', lineStroke)
+
+        // CREATE HOVER TOOLTIP WITH VERTICAL LINE //
+        tooltip = d3.select("#chart").append("div")
+          .attr('id', 'tooltip')
+          .style('position', 'absolute')
+          .style("background-color", "#D3D3D3")
+          .style('padding', 6)
+          .style('display', 'none')
+
+        mouseG = svg.append("g")
+          .attr("class", "mouse-over-effects");
+
+        mouseG.append("path") // create vertical line to follow mouse
+          .attr("class", "mouse-line")
+          .style("stroke", "#A9A9A9")
+          .style("stroke-width", lineStroke)
+          .style("opacity", "0");
+
+        var lines = document.getElementsByClassName('line');
+
+        var mousePerLine = mouseG.selectAll('.mouse-per-line')
+          .data(res_nested)
+          .enter()
+          .append("g")
+          .attr("class", "mouse-per-line");
+
+        mousePerLine.append("circle")
+          .attr("r", 4)
+          .style("stroke", function (d) {
+            return color(d.key)
+          })
+          .style("fill", "none")
+          .style("stroke-width", lineStroke)
+          .style("opacity", "0");
+
+        mouseG.append('svg:rect') // append a rect to catch mouse movements on canvas
+          .attr('width', width) 
+          .attr('height', height)
+          .attr('fill', 'none')
+          .attr('pointer-events', 'all')
+          .on('mouseout', function () { // on mouse out hide line, circles and text
+            d3.select(".mouse-line")
+              .style("opacity", "0");
+            d3.selectAll(".mouse-per-line circle")
+              .style("opacity", "0");
+            d3.selectAll(".mouse-per-line text")
+              .style("opacity", "0");
+            d3.selectAll("#tooltip")
+              .style('display', 'none')
+
+          })
+          .on('mouseover', function () { // on mouse in show line, circles and text
+            d3.select(".mouse-line")
+              .style("opacity", "1");
+            d3.selectAll(".mouse-per-line circle")
+              .style("opacity", "1");
+            d3.selectAll("#tooltip")
+              .style('display', 'block')
+          })
+          .on('mousemove', function () { // update tooltip content, line, circles and text when mouse moves
+            var mouse = d3.mouse(this)
+
+            d3.selectAll(".mouse-per-line")
+              .attr("transform", function (d, i) {
+                var xDate = xScale.invert(mouse[0]) // use 'invert' to get date corresponding to distance from mouse position relative to svg
+                var bisect = d3.bisector(function (d) { return d.date; }).left // retrieve row index of date on parsed csv
+                var idx = bisect(d.values, xDate);
+
+                d3.select(".mouse-line")
+                  .attr("d", function () {
+                    var data = "M" + xScale(d.values[idx].date) + "," + (height);
+                    data += " " + xScale(d.values[idx].date) + "," + 0;
+                    return data;
+                  });
+                return "translate(" + xScale(d.values[idx].date) + "," + yScale(d.values[idx].case) + ")";
+
+              });
+
+            updateTooltipContent(mouse, res_nested)
+
+          })
+
+        // CREATE SOURCE // 
+        var svgLegend = svg.append('g')
+          .attr('class', 'source')
+          //.attr("transform", "translate(" + (width + 20) + "," + 0 + ")")
+          .attr('transform', `translate(${width-105}, ${height+40})`)
+          .append('text')
+            .text('Source: NYC OpenData')
+            .on('click', function(){
+                    window.open('https://data.cityofnewyork.us/Health/COVID-19-Daily-Counts-of-Cases-Hospitalizations-an/rc75-m7u3');
+                });
+      }
+    
+      function updateTooltipContent(mouse, res_nested) {
+
+        sortingObj = []
+        res_nested.map(d => {
+          var xDate = xScale.invert(mouse[0])
+          var bisect = d3.bisector(function (d) { return d.date; }).left
+          var idx = bisect(d.values, xDate)
+          var options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
+          sortingObj.push({key: d.values[idx].borough, 
+                            case: d.values[idx].case,
+                            day: (d.values[idx].date).toLocaleDateString('en-US', options)
+                        })
+        })
+
+        sortingObj.sort(function(x, y){
+          return d3.descending(x.case, y.case);
+        })
+
+        var sortingArr = sortingObj.map(d=> d.key)
+
+        var res_nested1 = res_nested.slice().sort(function(a, b){
+          return sortingArr.indexOf(a.key) - sortingArr.indexOf(b.key) // rank borough based on case
+        })
+
+        tooltip.html(sortingObj[0].day)
+          .style('display', 'block')
+          .style('left', d3.event.pageX + 20)
+          .style('top', d3.event.pageY - 20)
+          .style('font-size', 11.5)
+          .selectAll()
+          .data(res_nested1).enter() // for each borough, list out name and case
+          .append('div')
+          .style('color', d => {
+            return color(d.key)
+          })
+          .style('font-size', 10)
+          .html(d => {
+            var xDate = xScale.invert(mouse[0])
+            var bisect = d3.bisector(function (d) { return d.date; }).left
+            var idx = bisect(d.values, xDate)
+            return d.key + ": " + d.values[idx].case.toString()
+          })
+      }
+    }
+
+    d3.json("https://data.cityofnewyork.us/resource/rc75-m7u3.json", function(error, data) {
+      if (error) throw error;
+
+      //console.log(data);
+
+      var res = data.map((d,i) => {
+        return {
+          BK_CASE_COUNT : +d.bk_case_count,
+          MN_CASE_COUNT : +d.mn_case_count,
+          QN_CASE_COUNT : +d.qn_case_count,
+          BX_CASE_COUNT : +d.bx_case_count,
+          SI_CASE_COUNT : +d.si_case_count,
+          date : new Date(d.date_of_interest)
+          //date : parseDate(d.DATE_OF_INTEREST),
+        }
+      })
+
+      //console.log(res);
+
+      var bkCase = res.map((d,i) => {
+        return {
+          borough : 'Brooklyn',
+          case : +d.BK_CASE_COUNT,
+          date : d.date
+        }
+      })
+
+      var mnCase = res.map((d,i) => {
+        return {
+          borough : 'Manhattan',
+          case : +d.MN_CASE_COUNT,
+          date : d.date
+        }
+      })
+
+      var qnCase = res.map((d,i) => {
+        return {
+          borough : 'Queens',
+          case : +d.QN_CASE_COUNT,
+          date : d.date
+        }
+      })
+
+      var bxCase = res.map((d,i) => {
+        return {
+          borough : 'the Bronx',
+          case : +d.BX_CASE_COUNT,
+          date : d.date
+        }
+      })
+
+      var siCase = res.map((d,i) => {
+        return {
+          borough : 'Staten Island',
+          case : +d.SI_CASE_COUNT,
+          date : d.date
+        }
+      })
+
+      var newData = mnCase.concat(qnCase);
+      newData = newData.concat(bkCase);
+      newData = newData.concat(bxCase);
+      newData = newData.concat(siCase);
+
+      //console.log(newData);
+      
+      render(newData);
+    });
+  </script>
+</body>
+</html>
